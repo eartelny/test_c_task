@@ -4,24 +4,34 @@
 #define _POSIX_SOURCE
 
 //TODO - align alphabetically
-#include <signal.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h> //non-blocking IO
+#include <netinet/in.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h> //for exit()
+#include <signal.h>
 #include <string.h>
 #include <strings.h>
-#include <unistd.h>
 #include <sys/types.h>
-#include <arpa/inet.h>
+#include <sys/time.h>
+//#include <sys/select.h>
 #include <sys/socket.h>
-#include<netinet/in.h>
-#include <fcntl.h> //non-blocking IO
-#include <errno.h>
-#include <stdint.h>
-//#include <time.h> // for usleep
+#include <unistd.h>
 
-//helper fnction just to handle fcntl results
+
+//helper function just to handle fcntl results
 int guard(int n, char * err) { if (n == -1) { perror(err); exit(1); } return n; }
 
+
+int max(int x, int y)
+{
+    if (x > y)
+        return x;
+    else
+        return y;
+}
 
 #define PORT 31337
 #define MAXLINE 1000
@@ -86,7 +96,7 @@ void uint8Tobuf(uint8_t value, char* buffer)
 
 
 //actual processing of parsed messages could be done here. now just printing to stderr
-void processParsedTLV(struct TypeLen * tl, char * value, char* original_buffer)
+void processParsedTLV(struct TypeLen * tl, char * value, char* original_buffer, int udp_file_descriptor,  struct sockaddr_in cliaddr)
 {
     fprintf(stderr, "Type: %d Len: %d ", tl->type, tl->len);
     switch(tl->type){
@@ -107,7 +117,11 @@ void processParsedTLV(struct TypeLen * tl, char * value, char* original_buffer)
        uint16_t target_offset = sizeof(uint16_t)*2 +tl->len;
        char buffer_for_sending[target_offset];
        memcpy(buffer_for_sending,original_buffer,target_offset);
+       //Send to STDIN
        puts(buffer_for_sending);//TODO - send to destination
+       //AND TO some socket
+       sendto(udp_file_descriptor, (const char*)buffer_for_sending, sizeof(buffer_for_sending), 0,
+           (struct sockaddr*)&cliaddr, sizeof(cliaddr));
     }
 
 }
@@ -146,7 +160,6 @@ uint16_t readNextTLVfragment(char * buffer , uint16_t buffer_len, struct TypeLen
             break;
     }
 
-    processParsedTLV(tl,value, buffer);
     uint16_t read_bytes = sizeOfTypeLen + tl->len;
     if (read_bytes < buffer_len){
         return read_bytes;
@@ -162,27 +175,68 @@ void start_udp_server()
 {
     char buffer[MAX_SAFE_UDP_PAYLOAD];
     
-    int listenfd, len;
+    int len, udpfd, nready, maxfdp1;
+    fd_set rset;
     struct sockaddr_in servaddr, cliaddr;
+    void sig_chld(int);
+
     bzero(&servaddr, sizeof(servaddr));
   
     // Create a UDP Socket
-    listenfd = socket(AF_INET, SOCK_DGRAM, 0);
-    //TODO: bad practice - better to use poll/select with blocking socket - TODO - implement with using POLL
-    //int socket_flags = guard(fcntl(listenfd, F_GETFL), "could not get flags on TCP listening socket");
-    //guard(fcntl(listenfd, F_SETFL, flags | O_NONBLOCK), "could not set UDP listening socket to be non-blocking");
+    udpfd = socket(AF_INET, SOCK_DGRAM, 0);
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(PORT);
     servaddr.sin_family = AF_INET; 
    
     // bind server address to socket descriptor
-    bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr));
+    bind(udpfd, (struct sockaddr*)&servaddr, sizeof(servaddr));
+    
+    // clear the descriptor set
+    FD_ZERO(&rset);
+ 
+    // get maxfd
+    maxfdp1 =  udpfd + 1;
+    struct TypeLen tl; 
+    char value[MAX_VALUE_LEN];
+    uint16_t remaining_bytes = 0;
+    uint16_t buffer_offset = 0;
 
-    //receive the datagram
-    len = sizeof(cliaddr);
-    while(!done)
+    for (;;) {
+
+        // set udpfd in readset
+        FD_SET(udpfd, &rset);
+ 
+        // select the ready descriptor
+        nready = select(maxfdp1, &rset, NULL, NULL, NULL);
+        
+        // if udp socket is readable receive the message.
+        if (FD_ISSET(udpfd, &rset)) {
+            len = sizeof(cliaddr);
+            bzero(buffer, sizeof(buffer));
+            int n = recvfrom(udpfd, buffer, sizeof(buffer),
+              0, (struct sockaddr*)&cliaddr,&len); //receive message from server
+
+            //PROCESS THE MESSAGE
+            remaining_bytes = n;
+            buffer_offset = 0;//TODO - too complicated logic with offsets
+            while (buffer_offset < n){
+              memset(&value[0], 0, sizeof(value));
+              uint16_t read_bytes = readNextTLVfragment(&buffer[buffer_offset], remaining_bytes, &tl, &value[0]);
+              buffer_offset = buffer_offset + read_bytes;
+              remaining_bytes = remaining_bytes - read_bytes;
+          
+              processParsedTLV(&tl,&value[0], &buffer[buffer_offset], udpfd, cliaddr);
+
+            }
+            //END OF PROCESS MESSAGE
+       }
+    }
+    
+    //receive the datagram - blocking way
+    /*while(!done)
     {
-        int n = recvfrom(listenfd, buffer, sizeof(buffer),
+        len = sizeof(cliaddr);
+        int n = recvfrom(udpfd, buffer, sizeof(buffer),
             0, (struct sockaddr*)&cliaddr,&len); //receive message from server
 
         struct TypeLen tl; 
@@ -195,16 +249,7 @@ void start_udp_server()
           buffer_offset = buffer_offset + read_bytes;
           remaining_bytes = remaining_bytes - read_bytes;
         }
-      
-       
-        //buffer[n] = '\0';
-            //puts(buffer);
-            //fprintf(stderr, "%s\n", buffer);
-            // send the response
-        //sendto(listenfd, &buffer, n, 0,
-        //        (struct sockaddr*)&cliaddr, sizeof(cliaddr));
-
-    }
+    }*/
 }
 
 
@@ -218,7 +263,7 @@ int main()
     sigaction(SIGTERM, &action, NULL);
     //end of sigterm handling block 2 of 2
     
-    //set non-blocking stderr and stdout - TODO - seems not working now due to wrong usage
+    //set non-blocking stderr and stdout - TODO - seems not take any significant effect due to current app design
     int flags = guard(fcntl(STDOUT_FILENO, F_GETFL),"unable to get stdout flags");
     guard(fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK),"unable to set stdout non-blocking");
     

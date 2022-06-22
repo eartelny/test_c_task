@@ -149,8 +149,8 @@ int main()
     sendto(sockfd, message, sizeof(message), 0, (struct sockaddr*)NULL, sizeof(servaddr));
       
     // waiting for response
-    //recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)NULL, NULL);
-    //puts(buffer);
+    recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)NULL, NULL);
+    puts(buffer);
   
     // close the descriptor
     close(sockfd);
