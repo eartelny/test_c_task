@@ -41,11 +41,10 @@ void term(int signum)
 //end of sigterm handling block 1 of 2
 
 //TLV-related stuff - TODO - move to separate module
-///TLV-related stuff - TBD - move to separate module
 enum TlvType {Amplifier = 0x0, TransieverMode = 0x1, TlvTypeUnknown} tlv_type;
 
 
-//assume we have it properly aligned and packed without gaps
+//TODO assume we have it properly aligned and packed without gaps
 struct TypeLen{
     uint16_t type;
     uint16_t len;
@@ -68,11 +67,9 @@ struct TypeLen bufToTLstruct(char* buffer){
     memcpy(&curr_value,offsetted_buffer, sizeof(tl.type));
     tl.type = ntohs(curr_value);
     offsetted_buffer+=sizeof(tl.type);
-    
     memcpy(&curr_value,offsetted_buffer, sizeof(tl.len));
     tl.len = ntohs(curr_value);
     return tl;
-    
 };
 
 // a couple of methods to work with bool value
@@ -100,7 +97,7 @@ void processParsedTLV(struct TypeLen * tl, char * value, char* original_buffer)
             //&value[tl->len] = '\0';//TODO - no special processing for transiever modes yet - just print as is
             fprintf(stderr, "Value: %s\n",value);
             break;
-	default:
+        default:
             fprintf(stderr, "Value: SKIPPED\n");
             break;
 
@@ -110,10 +107,10 @@ void processParsedTLV(struct TypeLen * tl, char * value, char* original_buffer)
        uint16_t target_offset = sizeof(uint16_t)*2 +tl->len;
        char buffer_for_sending[target_offset];
        memcpy(buffer_for_sending,original_buffer,target_offset);
-       puts(buffer_for_sending);//TODO - send to destination	 
+       puts(buffer_for_sending);//TODO - send to destination
     }
-	
-} 
+
+}
 
 //read one TLV fragment from the buffer, return read bytes
 //value must be allocated to max possible len for "value" field
@@ -132,29 +129,29 @@ uint16_t readNextTLVfragment(char * buffer , uint16_t buffer_len, struct TypeLen
     if (target_offset > buffer_len)
     {
        return buffer_len;//TODO - need to handle as and error case - TLV len is set more than buffer_len
-    } 
+    }
     memcpy(value,buffer + sizeOfTypeLen, tl->len);
     switch(tl->type){
         case Amplifier:
             parsedTLVmessageType = Amplifier;
-	    //readAmplifierParam(buffer,tl->len, value); - in case we have some complex - it cound be done in separate functions, rather than memcpy into *value
+            //readAmplifierParam(buffer,tl->len, value); - in case we have some complex - it cound be done in separate functions, rather than memcpy into *value
             break;
         case TransieverMode:
             parsedTLVmessageType = TransieverMode;
-	    //readTrancieverParam(buffer,tl->len, value);
+            //readTrancieverParam(buffer,tl->len, value);
             break;
         default:
-	    //TODO - bad practice to assign here, maybe better to make this function return some error code here instead.
- 	    tl->type = TlvTypeUnknown;
+            //TODO - bad practice to assign here, maybe better to make this function return some error code here instead.
+            tl->type = TlvTypeUnknown;
             break;
     }
 
     processParsedTLV(tl,value, buffer);
     uint16_t read_bytes = sizeOfTypeLen + tl->len;
     if (read_bytes < buffer_len){
-    	return read_bytes;
+        return read_bytes;
     }else{
-    	return buffer_len;//have read whole buffer, nothing to read anymore;
+        return buffer_len;//have read whole buffer, nothing to read anymore;
     }
 }
 
@@ -171,7 +168,7 @@ void start_udp_server()
   
     // Create a UDP Socket
     listenfd = socket(AF_INET, SOCK_DGRAM, 0);
-    // bad practice - better to use poll/select with blocking socket - TODO - implement with using POLL
+    //TODO: bad practice - better to use poll/select with blocking socket - TODO - implement with using POLL
     //int socket_flags = guard(fcntl(listenfd, F_GETFL), "could not get flags on TCP listening socket");
     //guard(fcntl(listenfd, F_SETFL, flags | O_NONBLOCK), "could not set UDP listening socket to be non-blocking");
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -187,11 +184,11 @@ void start_udp_server()
     {
         int n = recvfrom(listenfd, buffer, sizeof(buffer),
             0, (struct sockaddr*)&cliaddr,&len); //receive message from server
-	
+
         struct TypeLen tl; 
         char value[MAX_VALUE_LEN];
         uint16_t remaining_bytes = n;
-	uint16_t buffer_offset = 0;//TODO - too complicated logic with offsets
+        uint16_t buffer_offset = 0;//TODO - too complicated logic with offsets
         while (buffer_offset < n){
           memset(&value[0], 0, sizeof(value));
           uint16_t read_bytes = readNextTLVfragment(&buffer[buffer_offset], remaining_bytes, &tl, &value[0]);
@@ -200,13 +197,13 @@ void start_udp_server()
         }
       
        
-        buffer[n] = '\0';
+        //buffer[n] = '\0';
             //puts(buffer);
-        fprintf(stderr, "%s\n", buffer);
+            //fprintf(stderr, "%s\n", buffer);
             // send the response
-        sendto(listenfd, &buffer, n, 0,
-                (struct sockaddr*)&cliaddr, sizeof(cliaddr));
-        
+        //sendto(listenfd, &buffer, n, 0,
+        //        (struct sockaddr*)&cliaddr, sizeof(cliaddr));
+
     }
 }
 
