@@ -107,16 +107,20 @@ void buildMessageTypeMode(char* buffer, uint8_t transeiver_mode){
 int main()
 {   
     char buffer[100];
-    char message[30];
+    char message[41];
     memset(&message[0], 0, sizeof(message));
     buildMEssageTypeAmplifier(message,1);
     char * next_message = &message[5];
     buildMEssageTypeAmplifier(next_message,0);
     next_message = &message[10];
+    buildMessageTypeInvalid(next_message,0,10);
+    next_message = &message[14];
     buildMessageTypeMode(next_message,0);
-    next_message = &message[16];
+    next_message = &message[20];
+    buildMessageTypeInvalid(next_message,3,8);
+    next_message = &message[27];
     buildMessageTypeMode(next_message,1);
-    next_message = &message[22];
+    next_message = &message[33];
     buildMessageTypeMode(next_message,2);;
     //puts(message);
 
